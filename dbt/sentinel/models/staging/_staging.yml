@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: stg_auth_events
+    description: Validated, de-duplicated authentication events from the silver layer.
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: event_time
+        tests: [not_null]
+      - name: outcome
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["success", "failure"]
+      - name: label_attack_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["none", "brute_force", "credential_stuffing", "password_spray", "impossible_travel"]
+
+  - name: stg_streaming_alerts
+    description: Windowed alerts from the streaming detectors.
+    columns:
+      - name: alert_id
+        tests: [unique, not_null]
+      - name: rule
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["brute_force", "credential_stuffing", "password_spray"]
+      - name: severity
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["high", "critical"]
+
+  - name: stg_breach_records
+    description: Hashed credentials from third-party breach dumps (k-anonymous, no plaintext).
+    columns:
+      - name: email_sha256
+        tests: [not_null]
+
+  - name: stg_quarantine
+    description: Events rejected by silver data-quality rules, one row per failed rule.

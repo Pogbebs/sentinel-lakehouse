@@ -1,0 +1,194 @@
+# Sentinel Lakehouse: full local stack.
+#   make up        start everything
+#   make down      stop (keep data)       make nuke   stop and delete volumes
+# Needs ~8 GB of memory allocated to Docker.
+
+x-sentinel-env: &sentinel-env
+  KAFKA_BOOTSTRAP: kafka:9092
+  AUTH_TOPIC: auth.events.v1
+  ALERTS_TOPIC: security.alerts.v1
+  LAKE_ROOT: s3a://lake
+  TABLE_FORMAT: delta
+  CHECKPOINT_ROOT: s3a://lake/_checkpoints
+  S3_ENDPOINT: http://minio:9000
+  S3_ENDPOINT_HOST: minio:9000
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  SENTINEL_PG_DSN: postgresql://sentinel:${SENTINEL_DB_PASSWORD:-sentinel}@postgres:5432/sentinel
+  WATERMARK_DELAY: 2 minutes
+  TRIGGER_INTERVAL: 30 seconds
+
+services:
+  # ------------------------------------------------------------------ messaging
+  kafka:
+    image: apache/kafka:3.8.0
+    hostname: kafka
+    ports: ["29092:29092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: -Xmx768m -Xms256m
+    volumes: [kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        K=/opt/kafka/bin/kafka-topics.sh
+        $$K --bootstrap-server kafka:9092 --create --if-not-exists --topic auth.events.v1 \
+            --partitions 6 --replication-factor 1 --config retention.ms=604800000 \
+            --config compression.type=lz4
+        $$K --bootstrap-server kafka:9092 --create --if-not-exists --topic security.alerts.v1 \
+            --partitions 3 --replication-factor 1 --config cleanup.policy=compact,delete
+        $$K --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    profiles: ["ui"]
+    ports: ["8085:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: sentinel
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on: [kafka]
+
+  # ------------------------------------------------------------------ storage
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    command: server /data --console-address ":9001"
+    ports: ["9000:9000", "9001:9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set lake http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin}
+        mc mb --ignore-existing lake/lake
+        mc ls lake
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d sentinel -c 'select 1' > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ------------------------------------------------------------------ compute
+  generator:
+    build: { context: ., dockerfile: docker/generator/Dockerfile }
+    environment:
+      <<: *sentinel-env
+      LAKE_ROOT: s3://lake
+    command: >
+      sentinel-generate kafka --minutes 525600 --speed 1
+      --events-per-minute ${EVENTS_PER_MINUTE:-300}
+      --attacks-per-hour ${ATTACKS_PER_HOUR:-6}
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  spark-streaming:
+    build: { context: ., dockerfile: docker/spark/Dockerfile }
+    environment: *sentinel-env
+    ports: ["4040:4040"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { memory: 3g }
+
+  airflow:
+    build: { context: ., dockerfile: docker/airflow/Dockerfile }
+    ports: ["8080:8080"]
+    environment:
+      <<: *sentinel-env
+      DUCKDB_PATH: /opt/airflow/data/sentinel.duckdb
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+    command: ["bash", "-c", "airflow scheduler & exec airflow webserver"]
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./dbt:/opt/sentinel/dbt
+      - airflow-data:/opt/airflow/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ serving
+  grafana:
+    image: grafana/grafana:11.2.2
+    ports: ["3000:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/sentinel.json
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  kafka-data:
+  minio-data:
+  pg-data:
+  airflow-data:

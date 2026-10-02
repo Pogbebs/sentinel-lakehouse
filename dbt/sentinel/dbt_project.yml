@@ -1,0 +1,33 @@
+name: sentinel
+version: "0.1.0"
+config-version: 2
+profile: sentinel
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Overridden per target in profiles.yml-adjacent env vars; see macros/lake_table.sql.
+  lake_root: "{{ env_var('LAKE_ROOT', '../../data/lake') }}"
+  lake_format: "{{ env_var('TABLE_FORMAT', 'parquet') }}"
+  # Impossible-travel thresholds: faster than a commercial jet over a meaningful distance.
+  travel_min_distance_km: 500
+  travel_min_speed_kmh: 900
+  # Detection regression gate used by tests/assert_detection_precision.sql
+  min_precision: 0.80
+  min_recall: 0.80
+
+models:
+  sentinel:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: table
+    marts:
+      +materialized: table
+
+flags:
+  send_anonymous_usage_stats: false

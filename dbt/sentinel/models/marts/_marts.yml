@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: fct_security_incidents
+    description: >
+      One row per incident from both detection paths (streaming windows collapsed into
+      incidents, and batch impossible-travel), scored against simulator ground truth.
+    columns:
+      - name: incident_id
+        tests: [unique, not_null]
+      - name: detection_path
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["streaming", "batch"]
+
+  - name: fct_impossible_travel
+    description: Consecutive successful logins implying travel faster than a jet.
+    columns:
+      - name: incident_id
+        tests: [unique, not_null]
+      - name: implied_speed_kmh
+        tests: [not_null]
+
+  - name: dim_exposed_accounts
+    description: Internal accounts whose email hash appears in a breach dump.
+    columns:
+      - name: user_id
+        tests: [unique, not_null]
+
+  - name: mart_user_risk_daily
+    description: Explainable daily risk score per user (0-100).
+    tests:
+      - dbt_utils_unique_combination:
+          arguments:
+            columns: [user_id, event_date]
+    columns:
+      - name: risk_score
+        tests: [not_null]
+
+  - name: mart_detection_quality
+    description: Precision, recall and time-to-detect per rule.
+    columns:
+      - name: rule
+        tests: [unique, not_null]
+
+  - name: mart_data_quality_daily
+    description: Accepted vs quarantined volume per day, by failure reason.
+    columns:
+      - name: day
+        tests: [unique, not_null]

@@ -1,0 +1,25 @@
+sentinel:
+  target: "{{ env_var('DBT_TARGET', 'local') }}"
+  outputs:
+    # Offline demo and CI: Parquet files on local disk, no extensions needed.
+    local:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../../data/warehouse/sentinel.duckdb') }}"
+      threads: 4
+
+    # Docker stack: Delta tables in MinIO, read through DuckDB's delta + httpfs extensions.
+    docker:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '/opt/airflow/data/sentinel.duckdb') }}"
+      threads: 4
+      extensions:
+        - httpfs
+        - delta
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('S3_ACCESS_KEY') }}"
+          secret: "{{ env_var('S3_SECRET_KEY') }}"
+          endpoint: "{{ env_var('S3_ENDPOINT_HOST', 'minio:9000') }}"
+          url_style: path
+          use_ssl: false
+          region: us-east-1

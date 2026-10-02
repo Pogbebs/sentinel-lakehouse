@@ -1,0 +1,16 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dbt/sentinel/target/
+dbt/sentinel/logs/
+dbt/sentinel/dbt_packages/
+dbt/sentinel/.user.yml
+spark-warehouse/
+metastore_db/
+derby.log
+.env
+.git/
