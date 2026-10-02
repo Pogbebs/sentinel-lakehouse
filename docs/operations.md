@@ -4,7 +4,7 @@
 
 | Question | Where to look |
 |---|---|
-| Are events arriving? | Spark UI (http://localhost:4040), Structured Streaming tab: input rate per query |
+| Are events arriving? | Spark UI (http://localhost:14040), Structured Streaming tab: input rate per query |
 | Is the stream keeping up? | Same tab: processing rate should stay above input rate; batch duration below the 30 s trigger |
 | Is data being rejected? | Grafana "Quarantine rate" panel, or `marts.mart_data_quality_daily` |
 | Did the batch layer run? | Airflow DAG `sentinel_batch`. The first task fails loudly if silver is more than 30 minutes stale |

@@ -2,6 +2,10 @@
 #   make up        start everything
 #   make down      stop (keep data)       make nuke   stop and delete volumes
 # Needs ~8 GB of memory allocated to Docker.
+#
+# Only the three web UIs are published to your machine, on uncommon ports so they do not
+# clash with other local stacks (Postgres 5432, Airflow 8080, ...). Everything else talks
+# over the internal compose network. Override any of them in .env.
 
 x-sentinel-env: &sentinel-env
   KAFKA_BOOTSTRAP: kafka:9092
@@ -24,7 +28,6 @@ services:
   kafka:
     image: apache/kafka:3.8.0
     hostname: kafka
-    ports: ["29092:29092"]
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -66,7 +69,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
     profiles: ["ui"]
-    ports: ["8085:8080"]
+    ports: ["127.0.0.1:${KAFKA_UI_PORT:-18085}:8080"]
     environment:
       KAFKA_CLUSTERS_0_NAME: sentinel
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -78,7 +81,6 @@ services:
     image: chrislusf/seaweedfs:4.22
     hostname: s3
     command: server -s3 -dir=/data -ip.bind=0.0.0.0 -s3.config=/etc/seaweedfs/s3.json
-    ports: ["8333:8333", "9333:9333"]
     volumes:
       - s3-data:/data
       - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
@@ -99,7 +101,6 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    ports: ["5432:5432"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -132,7 +133,7 @@ services:
   spark-streaming:
     build: { context: ., dockerfile: docker/spark/Dockerfile }
     environment: *sentinel-env
-    ports: ["4040:4040"]
+    ports: ["127.0.0.1:${SPARK_UI_PORT:-14040}:4040"]
     depends_on:
       kafka-init: { condition: service_completed_successfully }
       s3-init: { condition: service_completed_successfully }
@@ -144,7 +145,7 @@ services:
 
   airflow:
     build: { context: ., dockerfile: docker/airflow/Dockerfile }
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:${AIRFLOW_PORT:-18080}:8080"]
     environment:
       <<: *sentinel-env
       DUCKDB_PATH: /opt/airflow/data/sentinel.duckdb
@@ -170,7 +171,7 @@ services:
   # ------------------------------------------------------------------ serving
   grafana:
     image: grafana/grafana:11.2.2
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:${GRAFANA_PORT:-13000}:3000"]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer

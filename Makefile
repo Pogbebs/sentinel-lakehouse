@@ -31,8 +31,8 @@ demo: ## Offline end-to-end: generate -> Spark bronze/silver/alerts -> dbt gold 
 # ---------------------------------------------------------------- Docker stack
 up: ## Build and start the full stack
 	docker compose up -d --build
-	@echo "Grafana http://localhost:3000 | Airflow http://localhost:8080 (admin/admin)"
-	@echo "Spark UI http://localhost:4040 | SeaweedFS http://localhost:9333"
+	@echo "Grafana http://localhost:13000 | Airflow http://localhost:18080 (admin/admin)"
+	@echo "Spark UI http://localhost:14040"
 
 down: ## Stop the stack, keep data
 	docker compose down

@@ -115,11 +115,14 @@ make up
 
 | Service | URL | Login |
 |---|---|---|
-| Grafana dashboard | http://localhost:3000 | anonymous viewer |
-| Airflow | http://localhost:8080 | admin / admin |
-| Spark UI | http://localhost:4040 | |
-| Object store status | http://localhost:9333 | |
-| Kafka UI (optional) | http://localhost:8085 | `docker compose --profile ui up -d` |
+| Grafana dashboard | http://localhost:13000 | anonymous viewer |
+| Airflow | http://localhost:18080 | admin / admin |
+| Spark UI | http://localhost:14040 | |
+| Kafka UI (optional) | http://localhost:18085 | `docker compose --profile ui up -d` |
+
+Only these web UIs are published to your machine, on uncommon ports so the stack runs next
+to other local projects. Kafka, Postgres and the object store stay on the internal Docker
+network. Change any port in `.env`.
 
 Events start flowing immediately. Real-time alerts appear in Grafana within a few minutes,
 once the first windows close past the watermark. The batch panels fill after the first
