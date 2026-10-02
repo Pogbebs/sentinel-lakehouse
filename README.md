@@ -11,7 +11,7 @@ the real-time rules are actually performing.
 Everything runs locally with one command, and an offline mode runs the full pipeline in CI
 in about 30 seconds without Docker.
 
-![CI](https://github.com/<your-github-user>/sentinel-lakehouse/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Pogbebs/sentinel-lakehouse/actions/workflows/ci.yml/badge.svg)
 
 ---
 
