@@ -25,10 +25,13 @@ Because the backfill **overwrites** silver, the detection streams that read silv
 start again from the new table. Before restarting, delete their checkpoints:
 
 ```bash
-docker compose run --rm minio-init sh -c \
-  "mc alias set lake http://minio:9000 minioadmin minioadmin && \
-   mc rm --recursive --force lake/lake/_checkpoints/detect_brute_force \
-                            lake/lake/_checkpoints/detect_ip_abuse"
+docker compose run --rm s3-init python -c "
+import boto3, os
+s3 = boto3.resource('s3', endpoint_url=os.environ['S3_ENDPOINT'],
+    aws_access_key_id=os.environ['S3_ACCESS_KEY'], aws_secret_access_key=os.environ['S3_SECRET_KEY'])
+for q in ('detect_brute_force', 'detect_ip_abuse'):
+    s3.Bucket('lake').objects.filter(Prefix=f'_checkpoints/{q}/').delete()
+"
 ```
 
 The alert sinks are idempotent on `alert_id`, so re-detected alerts do not duplicate in
@@ -58,6 +61,6 @@ restarting after downtime may look for files that have been removed.
 ## Resetting everything
 
 ```bash
-make nuke   # removes Kafka, MinIO, Postgres and Airflow volumes
+make nuke   # removes Kafka, object store, Postgres and Airflow volumes
 make up
 ```

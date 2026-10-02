@@ -111,9 +111,9 @@ def write_breach_dump(records: list[dict], lake_root: str, as_of: date) -> str:
         bucket = lake_root.split("://", 1)[1].split("/", 1)[0]
         s3 = boto3.client(
             "s3",
-            endpoint_url=os.environ.get("S3_ENDPOINT", "http://localhost:9000"),
-            aws_access_key_id=os.environ.get("S3_ACCESS_KEY", "minioadmin"),
-            aws_secret_access_key=os.environ.get("S3_SECRET_KEY", "minioadmin"),
+            endpoint_url=os.environ.get("S3_ENDPOINT", "http://localhost:8333"),
+            aws_access_key_id=os.environ.get("S3_ACCESS_KEY", "sentinel"),
+            aws_secret_access_key=os.environ.get("S3_SECRET_KEY", "sentinel-secret"),
         )
         s3.put_object(Bucket=bucket, Key=key, Body=body.encode())
         return f"s3://{bucket}/{key}"

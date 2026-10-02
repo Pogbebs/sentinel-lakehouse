@@ -24,10 +24,10 @@ class Settings:
         default_factory=lambda: _env("CHECKPOINT_ROOT", "./data/checkpoints")
     )
 
-    # Object storage (MinIO / S3)
-    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", "http://localhost:9000"))
-    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", "minioadmin"))
-    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", "minioadmin"))
+    # Object storage (any S3-compatible store; SeaweedFS in Docker)
+    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", "http://localhost:8333"))
+    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", "sentinel"))
+    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", "sentinel-secret"))
 
     # Serving database
     pg_dsn: str = field(

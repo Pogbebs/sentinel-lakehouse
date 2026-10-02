@@ -12,7 +12,7 @@ def check_silver_freshness(max_lag_minutes: int = 30) -> datetime:
     root = os.environ["LAKE_ROOT"].replace("s3a://", "s3://")
     con = duckdb.connect()
     if os.environ.get("TABLE_FORMAT", "parquet") == "delta":
-        endpoint = os.environ.get("S3_ENDPOINT_HOST", "minio:9000")
+        endpoint = os.environ.get("S3_ENDPOINT_HOST", "s3:8333")
         con.execute("install httpfs; load httpfs; install delta; load delta;")
         con.execute(f"""
             create secret lake (type s3, key_id '{os.environ["S3_ACCESS_KEY"]}',

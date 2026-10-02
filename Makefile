@@ -32,7 +32,7 @@ demo: ## Offline end-to-end: generate -> Spark bronze/silver/alerts -> dbt gold 
 up: ## Build and start the full stack
 	docker compose up -d --build
 	@echo "Grafana http://localhost:3000 | Airflow http://localhost:8080 (admin/admin)"
-	@echo "Spark UI http://localhost:4040 | MinIO http://localhost:9001 (minioadmin/minioadmin)"
+	@echo "Spark UI http://localhost:4040 | SeaweedFS http://localhost:9333"
 
 down: ## Stop the stack, keep data
 	docker compose down

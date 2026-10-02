@@ -10,10 +10,11 @@ x-sentinel-env: &sentinel-env
   LAKE_ROOT: s3a://lake
   TABLE_FORMAT: delta
   CHECKPOINT_ROOT: s3a://lake/_checkpoints
-  S3_ENDPOINT: http://minio:9000
-  S3_ENDPOINT_HOST: minio:9000
-  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  S3_ENDPOINT: http://s3:8333
+  S3_ENDPOINT_HOST: s3:8333
+  # Must match infra/seaweedfs/s3.json
+  S3_ACCESS_KEY: sentinel
+  S3_SECRET_KEY: sentinel-secret
   SENTINEL_PG_DSN: postgresql://sentinel:${SENTINEL_DB_PASSWORD:-sentinel}@postgres:5432/sentinel
   WATERMARK_DELAY: 2 minutes
   TRIGGER_INTERVAL: 30 seconds
@@ -72,33 +73,28 @@ services:
     depends_on: [kafka]
 
   # ------------------------------------------------------------------ storage
-  minio:
-    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
-    command: server /data --console-address ":9001"
-    ports: ["9000:9000", "9001:9001"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes: [minio-data:/data]
+  # S3-compatible object store. (MinIO's images were withdrawn from Docker Hub in 2025.)
+  s3:
+    image: chrislusf/seaweedfs:4.22
+    hostname: s3
+    command: server -s3 -dir=/data -ip.bind=0.0.0.0 -s3.config=/etc/seaweedfs/s3.json
+    ports: ["8333:8333", "9333:9333"]
+    volumes:
+      - s3-data:/data
+      - ./infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # The S3 port treats /anything as a bucket name, so probe the master instead.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9333/cluster/status > /dev/null"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
 
-  minio-init:
-    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+  s3-init:
+    build: { context: ., dockerfile: docker/generator/Dockerfile }
     depends_on:
-      minio: { condition: service_healthy }
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        mc alias set lake http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin}
-        mc mb --ignore-existing lake/lake
-        mc ls lake
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      s3: { condition: service_healthy }
+    environment: *sentinel-env
+    command: ["python", "/opt/sentinel/scripts/create_bucket.py", "lake"]
     restart: "no"
 
   postgres:
@@ -130,7 +126,7 @@ services:
       --attacks-per-hour ${ATTACKS_PER_HOUR:-6}
     depends_on:
       kafka-init: { condition: service_completed_successfully }
-      minio-init: { condition: service_completed_successfully }
+      s3-init: { condition: service_completed_successfully }
     restart: unless-stopped
 
   spark-streaming:
@@ -139,7 +135,7 @@ services:
     ports: ["4040:4040"]
     depends_on:
       kafka-init: { condition: service_completed_successfully }
-      minio-init: { condition: service_completed_successfully }
+      s3-init: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
     restart: unless-stopped
     deploy:
@@ -168,7 +164,7 @@ services:
       - airflow-data:/opt/airflow/data
     depends_on:
       postgres: { condition: service_healthy }
-      minio-init: { condition: service_completed_successfully }
+      s3-init: { condition: service_completed_successfully }
     restart: unless-stopped
 
   # ------------------------------------------------------------------ serving
@@ -189,6 +185,6 @@ services:
 
 volumes:
   kafka-data:
-  minio-data:
+  s3-data:
   pg-data:
   airflow-data:

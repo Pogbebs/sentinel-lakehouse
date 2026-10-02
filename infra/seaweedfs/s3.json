@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "sentinel",
+      "credentials": [
+        { "accessKey": "sentinel", "secretKey": "sentinel-secret" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 **Real-time credential-abuse and account-takeover detection on a streaming + batch lakehouse.**
 
 Sentinel ingests authentication events from Kafka, lands them in a Delta Lake medallion
-architecture on S3-compatible storage, detects brute force, credential stuffing and password
+architecture on S3-compatible storage (SeaweedFS locally, Amazon S3 in the cloud), detects brute force, credential stuffing and password
 spraying in real time with Spark Structured Streaming, and runs an hourly dbt layer for the
 questions that need history: impossible travel, breach exposure, per-user risk, and how well
 the real-time rules are actually performing.
@@ -32,7 +32,7 @@ flowchart LR
         D{{Windowed detectors<br/>brute force · stuffing · spray}}
     end
 
-    subgraph Lake["Delta Lake on MinIO (S3)"]
+    subgraph Lake["Delta Lake on S3 (SeaweedFS)"]
         BR
         SV
         Q
@@ -68,7 +68,7 @@ flowchart LR
 |---|---|---|
 | Transport | Kafka 3.8 (KRaft) | Durable, replayable log. Keyed by username so each account's events stay ordered within a partition. |
 | Stream processing | Spark 3.5 Structured Streaming | Event-time windows, watermarks, and exactly-once file sinks. Same code scales from `local[*]` to a cluster. |
-| Table format | Delta Lake 3.2 on MinIO | ACID appends from streams, time travel for audits, idempotent writes via `txnAppId`/`txnVersion`. |
+| Table format | Delta Lake 3.2 on SeaweedFS (S3 API) | ACID appends from streams, time travel for audits, idempotent writes via `txnAppId`/`txnVersion`. |
 | Transformations | dbt + DuckDB | Version-controlled SQL with tests. DuckDB reads Delta directly, so the batch layer needs no cluster. |
 | Orchestration | Airflow 2.10 | Hourly DAG with retries, a freshness gate, and single-writer concurrency control. |
 | Serving | Postgres + Grafana | Low-latency reads for dashboards; marts swapped in atomically so readers never see partial loads. |
@@ -118,7 +118,7 @@ make up
 | Grafana dashboard | http://localhost:3000 | anonymous viewer |
 | Airflow | http://localhost:8080 | admin / admin |
 | Spark UI | http://localhost:4040 | |
-| MinIO console | http://localhost:9001 | minioadmin / minioadmin |
+| Object store status | http://localhost:9333 | |
 | Kafka UI (optional) | http://localhost:8085 | `docker compose --profile ui up -d` |
 
 Events start flowing immediately. Real-time alerts appear in Grafana within a few minutes,

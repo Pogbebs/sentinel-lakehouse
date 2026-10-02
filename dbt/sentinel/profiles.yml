@@ -7,7 +7,7 @@ sentinel:
       path: "{{ env_var('DUCKDB_PATH', '../../data/warehouse/sentinel.duckdb') }}"
       threads: 4
 
-    # Docker stack: Delta tables in MinIO, read through DuckDB's delta + httpfs extensions.
+    # Docker stack: Delta tables in S3 (SeaweedFS), read through DuckDB's delta + httpfs extensions.
     docker:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', '/opt/airflow/data/sentinel.duckdb') }}"
@@ -19,7 +19,7 @@ sentinel:
         - type: s3
           key_id: "{{ env_var('S3_ACCESS_KEY') }}"
           secret: "{{ env_var('S3_SECRET_KEY') }}"
-          endpoint: "{{ env_var('S3_ENDPOINT_HOST', 'minio:9000') }}"
+          endpoint: "{{ env_var('S3_ENDPOINT_HOST', 's3:8333') }}"
           url_style: path
           use_ssl: false
           region: us-east-1
