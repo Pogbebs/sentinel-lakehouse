@@ -30,3 +30,17 @@ def check_silver_freshness(max_lag_minutes: int = 30) -> datetime:
     if lag > timedelta(minutes=max_lag_minutes):
         raise RuntimeError(f"silver.auth_events is stale: last ingest {latest} ({lag} ago)")
     return latest
+
+
+def main() -> None:
+    import argparse
+
+    p = argparse.ArgumentParser(description="Fail if silver.auth_events is stale.")
+    p.add_argument("--max-lag-minutes", type=int, default=30)
+    args = p.parse_args()
+    latest = check_silver_freshness(args.max_lag_minutes)
+    print(f"silver.auth_events is fresh: last ingest {latest.isoformat()}")
+
+
+if __name__ == "__main__":
+    main()

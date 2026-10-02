@@ -124,6 +124,9 @@ Only these web UIs are published to your machine, on uncommon ports so the stack
 to other local projects. Kafka, Postgres and the object store stay on the internal Docker
 network. Change any port in `.env`.
 
+Already running an Airflow for other projects? Turn the bundled one off and run
+`sentinel_batch` in yours instead: see [docs/shared-airflow.md](docs/shared-airflow.md).
+
 Events start flowing immediately. Real-time alerts appear in Grafana within a few minutes,
 once the first windows close past the watermark. The batch panels fill after the first
 hourly Airflow run, or right away with `make batch`.
@@ -203,7 +206,7 @@ grafana/          provisioned datasource and dashboard
 infra/postgres/   roles, alerts table, read-only dashboard grants
 docker/           images for Spark, Airflow and the generator
 tests/            unit tests, including streaming-mode tests
-docs/             detection tuning notes and operations runbook
+docs/             detection tuning, operations runbook, shared-Airflow setup
 ```
 
 ## Data model

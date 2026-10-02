@@ -1,9 +1,12 @@
 FROM apache/spark:3.5.3-scala2.12-java17-python3-ubuntu
 
 USER root
+# PYTHONPATH puts the project source on the path directly, so imports never depend on
+# where pip happened to install the package. spark-submit appends pyspark/py4j to it.
 ENV SPARK_PACKAGES="io.delta:delta-spark_2.12:3.2.1,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4" \
     IVY_HOME=/opt/ivy \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/sentinel/src
 
 RUN python3 -m pip install --no-cache-dir "delta-spark==3.2.1" "psycopg2-binary>=2.9"
 
@@ -11,11 +14,11 @@ WORKDIR /opt/sentinel
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY scripts ./scripts
-RUN python3 -m pip install --no-cache-dir --no-deps . \
- # Resolve and cache the JVM dependencies at build time so containers start offline.
- && echo "print('warm')" > /tmp/warm.py \
+RUN chmod -R a+rX /opt/sentinel \
+ # Resolve and cache the JVM dependencies at build time so containers start offline,
+ # and fail the build right here if any Python import is broken.
  && /opt/spark/bin/spark-submit --conf spark.jars.ivy=${IVY_HOME} \
-      --packages ${SPARK_PACKAGES} /tmp/warm.py \
+      --packages ${SPARK_PACKAGES} /opt/sentinel/scripts/check_imports.py \
  && chown -R spark:spark ${IVY_HOME}
 
 USER spark

@@ -143,12 +143,16 @@ services:
       resources:
         limits: { memory: 3g }
 
+  # Bundled Airflow. Enabled by COMPOSE_PROFILES=airflow (the default in .env.example).
+  # Leave it out to run the DAG in an Airflow you already have (docs/shared-airflow.md).
   airflow:
+    profiles: ["airflow"]
     build: { context: ., dockerfile: docker/airflow/Dockerfile }
     ports: ["127.0.0.1:${AIRFLOW_PORT:-18080}:8080"]
     environment:
       <<: *sentinel-env
       DUCKDB_PATH: /opt/airflow/data/sentinel.duckdb
+      DBT_TARGET: docker
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow}@postgres:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -183,6 +187,11 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       postgres: { condition: service_healthy }
+
+# A fixed network name lets another compose project (e.g. a shared Airflow) join it.
+networks:
+  default:
+    name: sentinel-net
 
 volumes:
   kafka-data:
