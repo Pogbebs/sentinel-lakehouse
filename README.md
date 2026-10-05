@@ -121,6 +121,7 @@ make up
 | Airflow | http://localhost:18080 | admin / admin |
 | Spark UI | http://localhost:14040 | |
 | Kafka UI (optional) | http://localhost:18085 | `docker compose --profile ui up -d` |
+| Postgres (DBeaver, psql) | localhost:15432, database `sentinel` | sentinel / sentinel (read-only: grafana / grafana) |
 
 Only these web UIs are published to your machine, on uncommon ports so the stack runs next
 to other local projects. Kafka, Postgres and the object store stay on the internal Docker

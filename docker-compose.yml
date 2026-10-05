@@ -109,6 +109,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel}
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow}
+    # Published on an uncommon port, localhost only, for SQL clients such as DBeaver.
+    ports: ["127.0.0.1:${POSTGRES_PORT:-15432}:5432"]
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./infra/postgres:/docker-entrypoint-initdb.d:ro
