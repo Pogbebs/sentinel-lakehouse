@@ -13,6 +13,8 @@ in about 30 seconds without Docker.
 
 ![CI](https://github.com/Pogbebs/sentinel-lakehouse/actions/workflows/ci.yml/badge.svg)
 
+![Sentinel Grafana dashboard: real-time credential-abuse alerts, user risk and detection quality](docs/images/grafana-dashboard.png)
+
 ---
 
 ## Architecture
