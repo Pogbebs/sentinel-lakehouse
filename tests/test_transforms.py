@@ -171,3 +171,38 @@ def test_detectors_run_as_structured_streams(spark, tmp_path, detector):
     q.awaitTermination(120)
     assert q.exception() is None
     assert spark.read.parquet(str(out)).count() > 0
+
+
+def test_progress_logger_reports_batches_and_termination(spark, tmp_path, caplog):
+    """The listener logs progress per batch and says why a query stopped."""
+    import logging
+    import time
+
+    from sentinel.streaming.pipeline import ProgressLogger, wait_for_failure
+
+    listener = ProgressLogger()
+    spark.streams.addListener(listener)
+    try:
+        with caplog.at_level(logging.INFO, logger="sentinel.streaming"):
+            q = (
+                spark.readStream.format("rate")
+                .option("rowsPerSecond", 5)
+                .load()
+                .writeStream.format("noop")
+                .queryName("rate_probe")
+                .trigger(processingTime="1 second")
+                .start()
+            )
+            deadline = time.time() + 60
+            while time.time() < deadline and "progress rate_probe" not in caplog.text:
+                time.sleep(0.5)
+            q.stop()
+            assert wait_for_failure(spark, [q]) == 1
+            deadline = time.time() + 10
+            while time.time() < deadline and "terminated" not in caplog.text:
+                time.sleep(0.2)
+    finally:
+        spark.streams.removeListener(listener)
+    assert "progress rate_probe" in caplog.text
+    assert "query rate_probe" in caplog.text and "active=False" in caplog.text
+    assert "terminated WITHOUT an error" in caplog.text

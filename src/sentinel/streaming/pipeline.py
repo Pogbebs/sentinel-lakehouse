@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.streaming import StreamingQuery
+from pyspark.sql.streaming import StreamingQuery, StreamingQueryListener
 
 from sentinel.common.config import Settings, get_settings
 from sentinel.streaming import transforms as T
@@ -125,6 +126,61 @@ def ensure_tables(spark: SparkSession, s: Settings) -> None:
             log.info("created empty table %s", path)
 
 
+class ProgressLogger(StreamingQueryListener):
+    """Log one line per micro-batch and the reason any query stops.
+
+    Spark's own logs are set to WARN to keep them readable, which also hides the fact
+    that a query has stopped. This listener makes progress and termination visible.
+    """
+
+    def onQueryStarted(self, event) -> None:
+        log.info("query started: %s (id=%s)", event.name, event.id)
+
+    def onQueryProgress(self, event) -> None:
+        p = event.progress
+        log.info(
+            "progress %-24s batch=%-6s rows=%-7s rows/s=%-8.1f took=%sms",
+            p.name,
+            p.batchId,
+            p.numInputRows,
+            p.processedRowsPerSecond or 0.0,
+            p.durationMs.get("triggerExecution"),
+        )
+
+    def onQueryIdle(self, event) -> None:  # Spark >= 3.5: no new data this trigger
+        pass
+
+    def onQueryTerminated(self, event) -> None:
+        if event.exception:
+            log.error("query terminated with error (id=%s): %s", event.id, event.exception)
+        else:
+            log.error("query terminated WITHOUT an error (id=%s)", event.id)
+
+
+def wait_for_failure(spark: SparkSession, queries: list[StreamingQuery]) -> int:
+    """Block until any query stops, report every query's state, return an exit code.
+
+    A streaming job should never finish, so any termination is a failure: exiting
+    non-zero makes the container restart visible instead of looking like success.
+    """
+    try:
+        spark.streams.awaitAnyTermination()
+    except Exception as exc:  # StreamingQueryException carries the root cause
+        log.error("a streaming query failed: %s", exc)
+    for q in queries:
+        err = q.exception()
+        log.error(
+            "query %-24s active=%s status=%s error=%s",
+            q.name,
+            q.isActive,
+            q.status.get("message"),
+            err.desc if err else None,
+        )
+        if q.lastProgress:
+            log.error("query %-24s last progress: %s", q.name, q.lastProgress)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser()
@@ -135,6 +191,7 @@ def main(argv: list[str] | None = None) -> None:
     s = get_settings()
     spark = build_spark("sentinel-streaming", s)
     spark.sparkContext.setLogLevel("WARN")
+    spark.streams.addListener(ProgressLogger())
     if s.table_format == "delta":
         ensure_tables(spark, s)
 
@@ -146,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     if "detect" in stages:
         queries += start_detections(spark, s)
     log.info("started: %s", [q.name for q in queries])
-    spark.streams.awaitAnyTermination()
+    sys.exit(wait_for_failure(spark, queries))
 
 
 if __name__ == "__main__":
