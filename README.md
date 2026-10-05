@@ -176,6 +176,12 @@ sees hundreds of distinct users. Some users forget a password and fail eight to 
 times. Legitimate travellers change cities at realistic speeds. Each of these would trigger a
 naive rule, and each one has a test.
 
+**Streams that hang get restarted, not ignored.** A streaming job can stall without
+failing. Every micro-batch is a heartbeat; a watchdog thread exits the job if any query goes
+silent for 10 minutes, so the container restarts from its checkpoints. The same heartbeats
+back a Docker healthcheck (`docker compose ps` shows `healthy`) and a Grafana panel showing
+seconds since each query last made progress ([operations runbook](docs/operations.md)).
+
 **Privacy by design.** The breach feed contains only SHA-256 email hashes and SHA-1
 password hashes (the Have I Been Pwned format). Exposure is found by hashing our own
 usernames in silver and joining. A dbt test fails if anything other than a 64-character hex

@@ -7,13 +7,183 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
     "to": "now"
   },
   "panels": [
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Stalled streams",
+      "description": "Streaming queries with no heartbeat for 10 minutes, or stopped. The job restarts itself at that point (STALL_TIMEOUT_SECONDS); anything above 0 for long means the restart is not fixing it.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sentinel-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sentinel-pg"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "select count(*) filter (where last_seen_at < now() - interval '10 minutes' or status in ('stalled', 'terminated')) as stalled from pipeline_heartbeat"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Streaming health (seconds since last heartbeat)",
+      "description": "One row per Spark streaming query, upserted every micro-batch. Idle means running with no new data.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sentinel-pg"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 0,
+        "w": 19,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sentinel-pg"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "select query_name as stream, status, round(extract(epoch from now() - last_seen_at))::int as seconds_since_heartbeat, batch_id, input_rows as last_batch_rows, last_seen_at from pipeline_heartbeat order by query_name"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "seconds_since_heartbeat"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 120
+                    },
+                    {
+                      "color": "red",
+                      "value": 600
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "running": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "idle": {
+                        "color": "green",
+                        "index": 1
+                      },
+                      "starting": {
+                        "color": "blue",
+                        "index": 2
+                      },
+                      "stalled": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "terminated": {
+                        "color": "red",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": 1,
       "type": "stat",
@@ -25,7 +195,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -59,7 +229,7 @@
       },
       "gridPos": {
         "x": 4,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -98,7 +268,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -132,7 +302,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -169,7 +339,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -203,7 +373,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 0,
+        "y": 5,
         "w": 4,
         "h": 4
       },
@@ -237,7 +407,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 9,
         "w": 16,
         "h": 9
       },
@@ -279,7 +449,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 4,
+        "y": 9,
         "w": 8,
         "h": 9
       },
@@ -313,7 +483,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 18,
         "w": 14,
         "h": 10
       },
@@ -347,7 +517,7 @@
       },
       "gridPos": {
         "x": 14,
-        "y": 13,
+        "y": 18,
         "w": 10,
         "h": 10
       },
@@ -381,7 +551,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 28,
         "w": 24,
         "h": 8
       },

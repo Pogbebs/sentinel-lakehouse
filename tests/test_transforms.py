@@ -178,9 +178,11 @@ def test_progress_logger_reports_batches_and_termination(spark, tmp_path, caplog
     import logging
     import time
 
+    from sentinel.streaming.health import HealthMonitor
     from sentinel.streaming.pipeline import ProgressLogger, wait_for_failure
 
-    listener = ProgressLogger()
+    health = HealthMonitor(health_file=tmp_path / "health.json", on_stall=lambda stale: None)
+    listener = ProgressLogger(health)
     spark.streams.addListener(listener)
     try:
         with caplog.at_level(logging.INFO, logger="sentinel.streaming"):
@@ -206,3 +208,6 @@ def test_progress_logger_reports_batches_and_termination(spark, tmp_path, caplog
     assert "progress rate_probe" in caplog.text
     assert "query rate_probe" in caplog.text and "active=False" in caplog.text
     assert "terminated WITHOUT an error" in caplog.text
+    state = health.snapshot()["rate_probe"]  # the listener fed real heartbeats
+    assert state.batch_id is not None and state.batch_id >= 0
+    assert (tmp_path / "health.json").exists()

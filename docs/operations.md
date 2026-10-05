@@ -4,11 +4,42 @@
 
 | Question | Where to look |
 |---|---|
+| Is every streaming query alive? | `docker compose ps`: `spark-streaming` shows `healthy`. Grafana "Streaming health" row shows seconds since each query's last heartbeat |
 | Are events arriving? | Spark UI (http://localhost:14040), Structured Streaming tab: input rate per query |
 | Is the stream keeping up? | Same tab: processing rate should stay above input rate; batch duration below the 30 s trigger |
 | Is data being rejected? | Grafana "Quarantine rate" panel, or `marts.mart_data_quality_daily` |
 | Did the batch layer run? | Airflow DAG `sentinel_batch`. The first task fails loudly if silver is more than 30 minutes stale |
 | Are the rules still good? | `marts.mart_detection_quality`. dbt fails the DAG if precision or recall drops below 0.8 |
+
+### Streaming liveness (watchdog)
+
+A streaming query can hang without failing: a corrupt checkpoint once made the job wait
+15 minutes at a time, log nothing, and exit cleanly, over and over. The job now watches
+itself ([`health.py`](../src/sentinel/streaming/health.py)):
+
+- Every micro-batch, and every idle trigger (running, no new data), is a heartbeat for that
+  query. A watchdog thread in the driver checks every 15 seconds.
+- If any query has had no heartbeat for `STALL_TIMEOUT_SECONDS` (default 600), the job logs
+  every query's state, marks the silent ones `stalled`, and exits with code 3.
+  `restart: unless-stopped` brings it back, and it resumes from its checkpoints.
+- New queries get `STALL_START_GRACE_SECONDS` (default 600) on top, because the first batch
+  after a restart may be replaying a Kafka backlog.
+- Heartbeats are written to `/tmp/sentinel-health.json` (read by the Docker healthcheck,
+  `scripts/healthcheck.py`) and upserted into the Postgres table `pipeline_heartbeat`
+  (read by Grafana). A Postgres outage never blocks the stream; writes back off for 60 s.
+
+Exit codes in `docker inspect sentinel-lakehouse-spark-streaming-1 --format "{{.State.ExitCode}}"`:
+`3` = watchdog restart (a query stalled), `1` = a query failed or stopped.
+
+```
+docker compose ps spark-streaming                       # healthy / unhealthy / starting
+docker compose exec spark-streaming python3 /opt/sentinel/scripts/healthcheck.py
+docker compose logs --tail 200 spark-streaming | Select-String "health|STALLED"   # PowerShell
+```
+
+If the job keeps restarting with exit code 3 on the same query, the restart is not fixing
+the cause. Check the s3 logs for errors on that query's checkpoint path, then see
+"Resetting everything" below; Kafka still holds the events, so nothing is lost.
 
 ## Backfill after a rule or contract change
 

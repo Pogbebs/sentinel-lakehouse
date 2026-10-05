@@ -31,6 +31,17 @@ psql -v ON_ERROR_STOP=1 --username sentinel --dbname sentinel <<-'EOSQL'
     CREATE INDEX IF NOT EXISTS alerts_window_idx ON alerts (window_start DESC);
     CREATE INDEX IF NOT EXISTS alerts_rule_idx   ON alerts (rule, window_start DESC);
 
+    -- One row per streaming query, upserted on every micro-batch by the streaming job's
+    -- HealthMonitor (which also creates it if missing). Grafana shows last activity.
+    CREATE TABLE IF NOT EXISTS pipeline_heartbeat (
+        query_name   text PRIMARY KEY,
+        last_seen_at timestamptz NOT NULL,
+        batch_id     bigint,
+        input_rows   bigint,
+        status       text NOT NULL,
+        updated_at   timestamptz NOT NULL DEFAULT now()
+    );
+
     -- Batch marts published by Airflow land here.
     CREATE SCHEMA IF NOT EXISTS marts;
 

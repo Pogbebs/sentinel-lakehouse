@@ -22,6 +22,9 @@ x-sentinel-env: &sentinel-env
   SENTINEL_PG_DSN: postgresql://sentinel:${SENTINEL_DB_PASSWORD:-sentinel}@postgres:5432/sentinel
   WATERMARK_DELAY: 2 minutes
   TRIGGER_INTERVAL: 30 seconds
+  # Streaming watchdog (sentinel.streaming.health): restart after this long without a heartbeat.
+  STALL_TIMEOUT_SECONDS: "600"
+  STALL_START_GRACE_SECONDS: "600"
 
 services:
   # ------------------------------------------------------------------ messaging
@@ -139,6 +142,14 @@ services:
       s3-init: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
     restart: unless-stopped
+    # The job's own watchdog exits (and so restarts) after STALL_TIMEOUT_SECONDS without a
+    # heartbeat; this healthcheck makes the same verdict visible in `docker compose ps`.
+    healthcheck:
+      test: ["CMD", "python3", "/opt/sentinel/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10m
     deploy:
       resources:
         limits: { memory: 3g }

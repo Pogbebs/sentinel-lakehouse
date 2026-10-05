@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 from pyspark.sql import SparkSession
@@ -19,6 +20,7 @@ from pyspark.sql.streaming import StreamingQuery, StreamingQueryListener
 from sentinel.common.config import Settings, get_settings
 from sentinel.streaming import transforms as T
 from sentinel.streaming.alert_sink import AlertSink
+from sentinel.streaming.health import DEFAULT_HEALTH_FILE, HealthMonitor
 from sentinel.streaming.lake import build_spark
 
 log = logging.getLogger("sentinel.streaming")
@@ -130,11 +132,18 @@ class ProgressLogger(StreamingQueryListener):
     """Log one line per micro-batch and the reason any query stops.
 
     Spark's own logs are set to WARN to keep them readable, which also hides the fact
-    that a query has stopped. This listener makes progress and termination visible.
+    that a query has stopped. This listener makes progress and termination visible, and
+    feeds every batch and idle trigger to the HealthMonitor as a heartbeat.
     """
+
+    def __init__(self, health: HealthMonitor | None = None) -> None:
+        super().__init__()
+        self.health = health
 
     def onQueryStarted(self, event) -> None:
         log.info("query started: %s (id=%s)", event.name, event.id)
+        if self.health and event.name:
+            self.health.register(event.name, query_id=str(event.id))
 
     def onQueryProgress(self, event) -> None:
         p = event.progress
@@ -146,15 +155,34 @@ class ProgressLogger(StreamingQueryListener):
             p.processedRowsPerSecond or 0.0,
             p.durationMs.get("triggerExecution"),
         )
+        if self.health:
+            self.health.beat(
+                p.name, query_id=str(p.id), batch_id=p.batchId, input_rows=p.numInputRows
+            )
 
     def onQueryIdle(self, event) -> None:  # Spark >= 3.5: no new data this trigger
-        pass
+        if self.health:
+            self.health.beat(query_id=str(event.id), status="idle")
 
     def onQueryTerminated(self, event) -> None:
         if event.exception:
             log.error("query terminated with error (id=%s): %s", event.id, event.exception)
         else:
             log.error("query terminated WITHOUT an error (id=%s)", event.id)
+        if self.health:
+            self.health.mark(query_id=str(event.id), status="terminated")
+
+
+def build_health_monitor(s: Settings) -> HealthMonitor:
+    """Watchdog settings come from the environment so they can be tuned per deployment."""
+    health = HealthMonitor(
+        stall_seconds=float(os.environ.get("STALL_TIMEOUT_SECONDS", "600")),
+        start_grace_seconds=float(os.environ.get("STALL_START_GRACE_SECONDS", "600")),
+        health_file=os.environ.get("HEALTH_FILE", DEFAULT_HEALTH_FILE),
+        pg_dsn=s.pg_dsn,
+    )
+    health.clear_file()  # /tmp survives a container restart; never report the last run
+    return health
 
 
 def wait_for_failure(spark: SparkSession, queries: list[StreamingQuery]) -> int:
@@ -191,7 +219,8 @@ def main(argv: list[str] | None = None) -> None:
     s = get_settings()
     spark = build_spark("sentinel-streaming", s)
     spark.sparkContext.setLogLevel("WARN")
-    spark.streams.addListener(ProgressLogger())
+    health = build_health_monitor(s)
+    spark.streams.addListener(ProgressLogger(health))
     if s.table_format == "delta":
         ensure_tables(spark, s)
 
@@ -202,7 +231,14 @@ def main(argv: list[str] | None = None) -> None:
         queries += start_silver(spark, s)
     if "detect" in stages:
         queries += start_detections(spark, s)
-    log.info("started: %s", [q.name for q in queries])
+    for q in queries:  # onQueryStarted is asynchronous; registering here closes the gap
+        health.register(q.name, query_id=str(q.id))
+    health.start()
+    log.info(
+        "started: %s (watchdog restarts the job after %ss without a heartbeat)",
+        [q.name for q in queries],
+        int(health.stall_seconds),
+    )
     sys.exit(wait_for_failure(spark, queries))
 
 
