@@ -70,3 +70,12 @@ def test_legitimate_travel_is_physically_possible():
 def test_office_nat_ip_is_shared_by_many_users():
     users = {e["username"] for e in _events(30) if e["src_ip"] == OFFICE_NAT_IP}
     assert len(users) > 50
+
+
+def test_event_ids_are_unique_across_generator_restarts():
+    """A restarted generator must not re-emit event ids from a previous run."""
+    cfg = SimConfig(users=200, events_per_minute=50, duplicate_rate=0, malformed_rate=0)
+    run1 = {e["event_id"] for e in Simulator(cfg, START, id_salt=111).run(5)}
+    run2 = {e["event_id"] for e in Simulator(cfg, START, id_salt=222).run(5)}
+    assert run1 and run2
+    assert run1.isdisjoint(run2)

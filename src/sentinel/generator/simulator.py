@@ -79,9 +79,18 @@ def iso(ts: datetime) -> str:
 
 
 class Simulator:
-    def __init__(self, config: SimConfig, start: datetime) -> None:
+    def __init__(self, config: SimConfig, start: datetime, *, id_salt: int = 0) -> None:
+        """`id_salt` is XORed into every event_id.
+
+        The seed makes the simulated behaviour reproducible, but event ids must be unique
+        across runs: a restarted generator replays the same random sequence, and without a
+        per-run salt it re-emits event ids that downstream de-duplication would treat as
+        duplicates (or, beyond the watermark, let through as collisions). Tests leave the
+        salt at 0 for exact reproducibility; the CLI passes a random one.
+        """
         self.cfg = config
         self.rng = random.Random(config.seed)
+        self.id_salt = id_salt
         self.start = start
         self._seq = itertools.count()
         self._heap: list[tuple[datetime, int, dict]] = []
@@ -156,7 +165,7 @@ class Simulator:
     ) -> dict:
         r = self.rng
         return {
-            "event_id": str(uuid.UUID(int=r.getrandbits(128))),
+            "event_id": str(uuid.UUID(int=r.getrandbits(128) ^ self.id_salt)),
             "event_ts": iso(ts),
             "user_id": user.user_id if user else None,
             "username": username,

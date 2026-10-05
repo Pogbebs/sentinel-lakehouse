@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -53,7 +54,8 @@ def main(argv: list[str] | None = None) -> None:
         events_per_minute=args.events_per_minute,
         attacks_per_hour=args.attacks_per_hour,
     )
-    sim = Simulator(cfg, start=start)
+    # A fresh salt per run keeps event ids globally unique across generator restarts.
+    sim = Simulator(cfg, start=start, id_salt=secrets.randbits(128))
 
     if not args.no_breach_dump:
         where = write_breach_dump(sim.breach_records, settings.lake_root, start.date())
