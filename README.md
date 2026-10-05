@@ -11,9 +11,7 @@ the real-time rules are actually performing.
 Everything runs locally with one command, and an offline mode runs the full pipeline in CI
 in about 30 seconds without Docker.
 
-![CI](https://github.com/Pogbebs/sentinel-lakehouse/actions/workflows/ci.yml/badge.svg)
-
-![Sentinel Grafana dashboard: real-time credential-abuse alerts, user risk and detection quality](docs/images/grafana-dashboard.png)
+![CI](https://github.com/<your-github-user>/sentinel-lakehouse/actions/workflows/ci.yml/badge.svg)
 
 ---
 
@@ -182,6 +180,13 @@ failing. Every micro-batch is a heartbeat; a watchdog thread exits the job if an
 silent for 10 minutes, so the container restarts from its checkpoints. The same heartbeats
 back a Docker healthcheck (`docker compose ps` shows `healthy`) and a Grafana panel showing
 seconds since each query last made progress ([operations runbook](docs/operations.md)).
+
+| Storage frozen: every stream goes silent | Unfrozen: streams recover and catch up |
+|---|---|
+| ![Streaming health during a storage freeze](docs/images/health-stalled.png) | ![Streaming health after recovery](docs/images/health-recovered.png) |
+
+In the recovery batch, bronze and silver processed 954 and 1,154 rows against about 170
+normally: the backlog Kafka held while storage was down, with no events lost.
 
 **Privacy by design.** The breach feed contains only SHA-256 email hashes and SHA-1
 password hashes (the Have I Been Pwned format). Exposure is found by hashing our own
