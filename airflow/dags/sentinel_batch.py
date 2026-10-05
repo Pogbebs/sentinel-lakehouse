@@ -43,6 +43,10 @@ _DEFAULTS = {
 }
 TASK_ENV = {k: os.environ.get(k, v) for k, v in _DEFAULTS.items()}
 TASK_ENV["PYTHONPATH"] = f"{SENTINEL_HOME}/src"
+# A shared Airflow may set these for another project's dbt (dbt reads them in preference
+# to the working directory), so always pin them to Sentinel's project.
+TASK_ENV["DBT_PROJECT_DIR"] = DBT_DIR
+TASK_ENV["DBT_PROFILES_DIR"] = DBT_DIR
 
 default_args = {
     "owner": "data-eng",
@@ -72,7 +76,7 @@ with DAG(
         task_id="dbt_build",
         bash_command=(
             f'mkdir -p "$(dirname "$DUCKDB_PATH")" && cd {DBT_DIR} && '
-            f"{DBT} build --target docker --profiles-dir . "
+            f"{DBT} build --target docker --project-dir {DBT_DIR} --profiles-dir {DBT_DIR} "
             "--target-path /tmp/dbt-target --log-path /tmp/dbt-logs"
         ),
         env=TASK_ENV,
