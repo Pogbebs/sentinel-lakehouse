@@ -100,7 +100,7 @@ Requires Python 3.10 to 3.12 and Java 17.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 make install
-make test     # 18 unit tests: generator, data-quality rules, detectors (batch + streaming)
+make test     # 29 unit tests: generator, data-quality rules, detectors (batch + streaming)
 make demo     # generate -> Spark bronze/silver/alerts -> dbt gold layer + tests -> report
 ```
 
@@ -121,9 +121,12 @@ make up
 | Kafka UI (optional) | http://localhost:18085 | `docker compose --profile ui up -d` |
 | Postgres (DBeaver, psql) | localhost:15432, database `sentinel` | sentinel / sentinel (read-only: grafana / grafana) |
 
-Only these web UIs are published to your machine, on uncommon ports so the stack runs next
-to other local projects. Kafka, Postgres and the object store stay on the internal Docker
-network. Change any port in `.env`.
+On Windows, `.\scripts\start.ps1` starts the stack (and a shared Airflow, if you use one),
+then waits until every check passes; `.\scripts\check.ps1` re-runs the checks any time.
+
+Only these web UIs and a localhost-only Postgres port are published to your machine, on
+uncommon ports so the stack runs next to other local projects. Kafka and the object store
+stay on the internal Docker network. Change any port in `.env`.
 
 Already running an Airflow for other projects? Turn the bundled one off and run
 `sentinel_batch` in yours instead: see [docs/shared-airflow.md](docs/shared-airflow.md).

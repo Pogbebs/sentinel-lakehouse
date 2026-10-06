@@ -2,6 +2,19 @@
 
 ## Health checks
 
+Windows (PowerShell), from the repo root:
+
+```powershell
+.\scripts\start.ps1            # start Sentinel, then the shared Airflow; wait until healthy
+.\scripts\check.ps1            # one pass of every check: PASS / WAIT / FAIL, exit code 0 or 1
+.\scripts\check.ps1 -WaitMinutes 12
+```
+
+`check.ps1` covers containers, the streaming healthcheck, stalled streams in
+`pipeline_heartbeat`, the newest alert, and the latest `sentinel_batch` run in Airflow.
+`start.ps1` assumes the shared Airflow lives in `..\dispatchledger\pipelines`; pass
+`-AirflowDir <path>` or `-SkipAirflow` otherwise.
+
 | Question | Where to look |
 |---|---|
 | Is every streaming query alive? | `docker compose ps`: `spark-streaming` shows `healthy`. Grafana "Streaming health" row shows seconds since each query's last heartbeat |
