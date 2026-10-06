@@ -195,7 +195,20 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/sentinel.json
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-13000}  # links in alert emails
       SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel}
+      # Alert email (grafana/provisioning/alerting). Set these in .env; see docs/operations.md.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-alerts@example.com}
+      GF_SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${SMTP_HOST:-smtp.mail.yahoo.com:587}
+      GF_SMTP_USER: ${SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${SMTP_USER:-alerts@example.com}
+      GF_SMTP_FROM_NAME: Sentinel alerts
+      # Optional Teams channel: a Teams Workflows webhook URL, and which severities to send
+      # there as a regex ("critical", "critical|warning"). "none" keeps Teams off.
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-https://example.invalid/teams-webhook}
+      TEAMS_SEVERITIES: ${TEAMS_SEVERITIES:-none}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro

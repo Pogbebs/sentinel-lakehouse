@@ -217,6 +217,10 @@ seconds since each query last made progress ([operations runbook](docs/operation
 In the recovery batch, bronze and silver processed 954 and 1,154 rows against about 170
 normally: the backlog Kafka held while storage was down, with no events lost.
 
+**Problems reach a person.** Grafana alert rules, provisioned from Git, email (and optionally post to Microsoft Teams) when a
+stream stalls or the detectors go quiet, with a runbook link in every message. A third rule
+pages the security team on a likely account takeover.
+
 **Privacy by design.** The breach feed contains only SHA-256 email hashes and SHA-1
 password hashes (the Have I Been Pwned format). Exposure is found by hashing our own
 usernames in silver and joining. A dbt test fails if anything other than a 64-character hex

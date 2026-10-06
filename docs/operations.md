@@ -54,6 +54,58 @@ If the job keeps restarting with exit code 3 on the same query, the restart is n
 the cause. Check the s3 logs for errors on that query's checkpoint path, then see
 "Resetting everything" below; Kafka still holds the events, so nothing is lost.
 
+## Alerting
+
+Grafana evaluates three provisioned rules every minute
+([grafana/provisioning/alerting/sentinel-alerts.yml](../grafana/provisioning/alerting/sentinel-alerts.yml)).
+Every alert is emailed to `ALERT_EMAIL_TO`; optionally, chosen severities also go to a
+Microsoft Teams channel:
+
+| Rule | Fires when | Severity |
+|---|---|---|
+| Streaming pipeline stalled | Any streaming query silent for 10 min or stopped, for 2 min | critical |
+| No security alerts for 45 minutes | The detectors have gone quiet (usually no input, not no attacks) | warning |
+| Possible account takeover | A brute-force burst ended in a successful login (one email lists every account) | critical, **paused by default** |
+
+Alerts for the same rule are grouped into one email, repeated every 4 hours while still
+firing, and a "resolved" email follows when the problem clears.
+
+**Set up email** (once). Create an app password for the sending account (Yahoo: Account
+security, Generate app password; Yahoo may ask you to turn on two-step verification
+first; Gmail works the same with `SMTP_HOST=smtp.gmail.com:587`). Then add to `.env`:
+
+```
+SMTP_ENABLED=true
+SMTP_HOST=smtp.mail.yahoo.com:587
+SMTP_USER=you@yahoo.com
+SMTP_PASSWORD=<the app password>
+ALERT_EMAIL_TO=you@yahoo.com
+```
+
+`docker compose up -d grafana` applies it. To send a test, open Grafana as admin
+(Sign in, `admin` / `GRAFANA_ADMIN_PASSWORD`), go to Alerting, Contact points,
+`sentinel-email`, Edit, and click Test.
+
+`.env` is in `.gitignore`, so the password never reaches GitHub.
+
+**Add Microsoft Teams (optional).** In the Teams channel, open Workflows and create
+"Post to a channel when a webhook request is received", copy its URL, then set in `.env`:
+
+```
+TEAMS_WEBHOOK_URL=<the workflow URL>
+TEAMS_SEVERITIES=critical          # or critical|warning for everything
+```
+
+and run `docker compose up -d grafana`. Email keeps receiving everything either way. The
+Teams path is configured and covered by routing tests but has not been tested against a
+live Teams channel; Microsoft has replaced the old connector webhooks with Workflows, and
+older Grafana versions format messages for the connector, so if posts do not appear,
+send a Test from the `sentinel-teams` contact point and check the Grafana logs.
+
+**Try it.** `docker compose pause s3` for 12 minutes fires "Streaming pipeline stalled";
+`docker compose unpause s3` resolves it. Resume or pause any rule under Alerting, Alert
+rules.
+
 ## Load testing
 
 Measures the running stack, so start it and wait for `check.ps1` to pass first:

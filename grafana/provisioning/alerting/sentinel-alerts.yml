@@ -1,0 +1,185 @@
+# Grafana alerting, provisioned from files so the rules live in Git with the code.
+#
+# Two channels, both configured from .env through docker-compose.yml:
+#   email  every alert goes to ALERT_EMAIL_TO (SMTP settings in docker-compose.yml)
+#   Teams  alerts whose severity matches TEAMS_SEVERITIES (a regex, e.g. "critical" or
+#          "critical|warning") also go to TEAMS_WEBHOOK_URL. The default "none" matches
+#          nothing, so Teams stays off until it is configured.
+# Without SMTP credentials the rules still evaluate and show in Grafana's Alerting page;
+# they just cannot send mail.
+#
+# Note: Grafana expands environment variables in provisioning files, so a dollar sign
+# here would be replaced. Templates below use .Labels instead of the dollar-sign form.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: sentinel-email
+    receivers:
+      - uid: sentinel-email
+        type: email
+        settings:
+          addresses: ${ALERT_EMAIL_TO}
+          singleEmail: true
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: sentinel-teams
+    receivers:
+      - uid: sentinel-teams
+        type: teams
+        settings:
+          url: ${TEAMS_WEBHOOK_URL}
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: sentinel-email
+    group_by: ["grafana_folder", "alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # Every alert is emailed; continue lets the same alert also match the Teams route.
+      - receiver: sentinel-email
+        object_matchers: [["severity", "=~", ".+"]]
+        continue: true
+      - receiver: sentinel-teams
+        object_matchers: [["severity", "=~", "${TEAMS_SEVERITIES}"]]
+
+groups:
+  # ------------------------------------------------------------------ is the platform OK?
+  - orgId: 1
+    name: pipeline-health
+    folder: Sentinel
+    interval: 1m
+    rules:
+      - uid: sentinel-stalled-streams
+        title: Streaming pipeline stalled
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: sentinel-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: >-
+                select count(*) as stalled_streams
+                from pipeline_heartbeat
+                where last_seen_at < now() - interval '10 minutes'
+                   or status in ('stalled', 'terminated')
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        labels:
+          severity: critical
+          team: data-engineering
+        annotations:
+          summary: One or more Spark streaming queries have stopped making progress.
+          description: >-
+            A streaming query has had no heartbeat for 10 minutes, or has stopped. The job
+            restarts itself after 10 minutes of silence, so if this alert stays firing the
+            restart is not fixing it. Check: docker compose logs --tail 200 spark-streaming,
+            and the Streaming health panel. Runbook: docs/operations.md, Streaming liveness.
+
+      - uid: sentinel-detection-silent
+        title: No security alerts for 45 minutes
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: sentinel-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: >-
+                select coalesce(extract(epoch from now() - max(inserted_at)) / 60, 0)
+                       as minutes_since_last_alert
+                from alerts
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [45] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: data-engineering
+        annotations:
+          summary: The detectors have raised no alerts for 45 minutes.
+          description: >-
+            Attacks normally trigger alerts every few minutes. Silence usually means events
+            stopped arriving (is the generator running?) or the detection queries are stuck,
+            not that attacks stopped. Check the Streaming health panel and
+            docker compose ps.
+
+  # ------------------------------------------------------------------ security
+  # Paused by default because the simulator produces a takeover every few minutes, which
+  # would fill an inbox. Resume it in Grafana (Alerting > Alert rules) to try it.
+  - orgId: 1
+    name: security
+    folder: Sentinel
+    interval: 1m
+    rules:
+      - uid: sentinel-account-takeover
+        title: Possible account takeover
+        isPaused: true
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: sentinel-pg
+            model:
+              refId: A
+              editorMode: code
+              format: table
+              rawQuery: true
+              rawSql: >-
+                select entity_value as account, count(*) as critical_alerts
+                from alerts
+                where severity = 'critical'
+                  and entity_type = 'account'
+                  and inserted_at > now() - interval '1 hour'
+                  and entity_value not like '%@loadtest.invalid'
+                group by 1
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: 'Failed-password burst followed by a successful login for {{ index .Labels "account" }}.'
+          description: >-
+            The brute-force detector saw many failed passwords and then a success on this
+            account, so the attacker probably got in. Reset the password, revoke sessions
+            and check the account's recent activity in Grafana (Latest alerts).
