@@ -3,10 +3,57 @@ name: ci
 on:
   push:
     branches: [main]
+    # Documentation-only changes cannot break the pipeline, so they skip CI.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_dispatch: # "Run workflow" button in the Actions tab
+
+# A newer push to the same branch cancels the run it replaces, so runs never pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Seconds, no Spark: fails fast on style, broken compose files or PowerShell syntax.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ruff
+        run: |
+          pip install "ruff>=0.6"
+          make lint
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $failed = $true; $errors | ForEach-Object { Write-Host "$($_.Extent.File):$($_.Extent.StartLineNumber) $($_.Message)" } }
+            else { Write-Host "ok  $($_.Name)" }
+          }
+          if ($failed) { exit 1 }
+
   test:
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -22,11 +69,15 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Delta and Kafka jars that Spark downloads on first use; cached between runs.
+      - name: Cache Spark packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-${{ hashFiles('src/sentinel/streaming/lake.py') }}
+
       - name: Install
         run: pip install -e ".[dev]"
-
-      - name: Lint
-        run: make lint
 
       - name: Unit tests
         run: make test
@@ -36,6 +87,3 @@ jobs:
       # recall fails the build here.
       - name: End-to-end demo
         run: MINUTES=120 make demo
-
-      - name: Validate compose file
-        run: docker compose config --quiet
