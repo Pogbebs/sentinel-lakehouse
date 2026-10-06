@@ -91,6 +91,29 @@ had **0.43 precision**, and the CI quality gate failed the build. See
 Synthetic data separates attacks from normal traffic more cleanly than production would, so
 treat these figures as a regression baseline, not a benchmark.
 
+## Performance (live stack on a Windows laptop, Docker Desktop)
+
+Measured with the built-in load test (`make loadtest`, see
+[docs/operations.md](docs/operations.md#load-testing)) while normal traffic kept flowing:
+
+| Measure | Result |
+|---|---|
+| Attack to alert (brute force, 3/3 probes detected) | median 249 s, max 266 s |
+| Producer rate | 126,975 events/s |
+| Bronze throughput (100,000 event burst) | 4,148 events/s, backlog cleared in 24 s |
+| Silver throughput (100,000 event burst) | 1,488 events/s, backlog cleared in 67 s |
+
+- **Headroom.** Normal traffic is about 5 events/s, so a single laptop absorbs roughly 300 times
+  the everyday load, and a sudden 100,000-event spike is fully validated and de-duplicated in
+  about a minute.
+- **Latency is a design choice, not a compute limit.** About 2 of the 4 minutes is the
+  watermark waiting for late events, up to 1 is the 5-minute window sliding to its next
+  boundary, and the rest is three 30-second micro-batch stages. A shorter watermark and
+  trigger interval would cut it, at the cost of dropping more late events.
+- **Silver is the bottleneck.** It waits for bronze to commit, then runs validation and
+  stateful de-duplication. It is the first stage to split into its own Spark application
+  (`--stages silver`) when volume grows.
+
 ## Quick start
 
 ### Option A: offline pipeline (no Docker, about 30 seconds)
