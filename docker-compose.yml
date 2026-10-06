@@ -22,6 +22,7 @@ x-sentinel-env: &sentinel-env
   SENTINEL_PG_DSN: postgresql://sentinel:${SENTINEL_DB_PASSWORD:-sentinel}@postgres:5432/sentinel
   WATERMARK_DELAY: 2 minutes
   TRIGGER_INTERVAL: 30 seconds
+  MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:-200000}
   # Streaming watchdog (sentinel.streaming.health): restart after this long without a heartbeat.
   STALL_TIMEOUT_SECONDS: "600"
   STALL_START_GRACE_SECONDS: "600"

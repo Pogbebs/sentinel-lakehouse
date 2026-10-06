@@ -55,4 +55,8 @@ backfill: ## Stop streaming, rebuild silver + alerts from bronze, restart (see d
 batch: ## Trigger the Airflow gold-layer DAG now
 	docker compose exec airflow airflow dags trigger sentinel_batch
 
-.PHONY: help install lint test demo up down nuke logs ps backfill batch
+loadtest: ## Measure attack-to-alert latency and ingest throughput on the running stack
+	docker compose build generator
+	docker compose run --rm generator python -m sentinel.loadtest
+
+.PHONY: help install lint test demo up down nuke logs ps backfill batch loadtest

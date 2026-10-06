@@ -13,7 +13,7 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-generator = ["confluent-kafka>=2.4", "boto3>=1.34"]
+generator = ["confluent-kafka>=2.4", "boto3>=1.34", "psycopg2-binary>=2.9"]
 spark = ["pyspark==3.5.3", "delta-spark==3.2.1", "psycopg2-binary>=2.9"]
 dbt = ["dbt-core>=1.10", "dbt-duckdb>=1.9", "duckdb>=1.1"]
 dev = [
@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 sentinel-generate = "sentinel.generator.cli:main"
+sentinel-loadtest = "sentinel.loadtest:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

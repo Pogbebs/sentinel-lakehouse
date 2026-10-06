@@ -14,4 +14,5 @@ select
     unknown_user_failures,
     cast(detected_at as timestamp)  as detected_at
 from {{ lake_table('gold/streaming_alerts') }}
+where entity_value not like '%@loadtest.invalid'  -- load-test probes (sentinel.loadtest)
 qualify row_number() over (partition by alert_id order by detected_at) = 1

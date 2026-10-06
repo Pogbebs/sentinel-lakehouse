@@ -32,7 +32,7 @@ def start_bronze(spark: SparkSession, s: Settings) -> StreamingQuery:
         .option("kafka.bootstrap.servers", s.kafka_bootstrap)
         .option("subscribe", s.auth_topic)
         .option("startingOffsets", "earliest")
-        .option("maxOffsetsPerTrigger", 200_000)  # back-pressure: bound each micro-batch
+        .option("maxOffsetsPerTrigger", s.max_offsets_per_trigger)  # bound each micro-batch
         .option("failOnDataLoss", "false")
         .load()
     )

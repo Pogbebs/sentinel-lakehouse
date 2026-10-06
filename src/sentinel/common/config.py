@@ -39,6 +39,10 @@ class Settings:
     # Streaming tuning
     watermark: str = field(default_factory=lambda: _env("WATERMARK_DELAY", "2 minutes"))
     trigger_interval: str = field(default_factory=lambda: _env("TRIGGER_INTERVAL", "30 seconds"))
+    # Back-pressure: the most Kafka records bronze reads per micro-batch.
+    max_offsets_per_trigger: int = field(
+        default_factory=lambda: int(_env("MAX_OFFSETS_PER_TRIGGER", "200000"))
+    )
 
     def table(self, layer: str, name: str) -> str:
         return f"{self.lake_root.rstrip('/')}/{layer}/{name}"

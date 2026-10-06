@@ -54,6 +54,43 @@ If the job keeps restarting with exit code 3 on the same query, the restart is n
 the cause. Check the s3 logs for errors on that query's checkpoint path, then see
 "Resetting everything" below; Kafka still holds the events, so nothing is lost.
 
+## Load testing
+
+Measures the running stack, so start it and wait for `check.ps1` to pass first:
+
+```
+docker compose build generator
+docker compose run --rm generator python -m sentinel.loadtest            # both phases, ~10 min
+docker compose run --rm generator python -m sentinel.loadtest --phase latency --probes 5
+docker compose run --rm generator python -m sentinel.loadtest --phase throughput --events 500000
+```
+
+It ends by printing a Markdown table ready for the README.
+
+**Attack-to-alert latency.** Each probe is 20 failed logins in about 20 seconds against
+its own account. Latency runs from the last failed login to the alert row in Postgres. The
+number is dominated by design choices, not compute:
+
+| Component | Typical | Why |
+|---|---|---|
+| Kafka to bronze, bronze to silver, silver to detector | up to 30 s each | `TRIGGER_INTERVAL` micro-batches |
+| Window close | up to 60 s | 5-minute windows sliding every minute |
+| Watermark | 2 min | `WATERMARK_DELAY`: waits for late events before closing a window |
+
+Lowering the watermark or trigger interval cuts latency, at the cost of dropping more late
+events and running more (smaller) batches.
+
+**Throughput.** Sends a burst of successful logins by one-off accounts, then follows the
+heartbeat table until bronze and silver have absorbed it. Bronze reads at most
+`MAX_OFFSETS_PER_TRIGGER` (200,000) records per batch, so with a 30 s trigger its ceiling is
+about 6,700 events/s unless a batch runs longer than the trigger. Raise the setting in `.env`
+to find the real limit of the machine.
+
+**Load-test data never touches the metrics.** Every load-test username ends in
+`@loadtest.invalid`. The dbt staging models filter that domain out, so marts, risk scores
+and the detection-quality gate are unaffected, and probe alerts are deleted from Postgres
+when the run ends (`--keep-alerts` keeps them).
+
 ## Backfill after a rule or contract change
 
 Silver and the alerts can be rebuilt from bronze, which keeps every raw payload.

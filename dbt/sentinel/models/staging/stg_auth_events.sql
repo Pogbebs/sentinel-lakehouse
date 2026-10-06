@@ -1,4 +1,5 @@
 -- Silver auth events, typed and renamed for analytics. One row per unique event_id.
+-- Load-test traffic (sentinel.loadtest) is excluded so it never moves a metric.
 select
     event_id,
     cast(event_time as timestamp)        as event_time,
@@ -22,3 +23,4 @@ select
     label_attack_id,
     cast(ingested_at as timestamp)       as ingested_at
 from {{ lake_table('silver/auth_events') }}
+where username not like '%@loadtest.invalid'

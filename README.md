@@ -121,6 +121,9 @@ make up
 | Kafka UI (optional) | http://localhost:18085 | `docker compose --profile ui up -d` |
 | Postgres (DBeaver, psql) | localhost:15432, database `sentinel` | sentinel / sentinel (read-only: grafana / grafana) |
 
+To measure attack-to-alert latency and throughput on the running stack, see
+[Load testing](docs/operations.md#load-testing) (`make loadtest`).
+
 On Windows, `.\scripts\start.ps1` starts the stack (and a shared Airflow, if you use one),
 then waits until every check passes; `.\scripts\check.ps1` re-runs the checks any time.
 
